@@ -1,7 +1,19 @@
 # Needle 3 Tool-Calling Crossover Benchmark — Design Proposal
 
-Status: **proposal, pre-implementation.** Nothing in §A–D is built yet.
 Date: 2026-09-20. Written after live inspection of `cactus-needle==3.0.2`.
+
+> **Read §0 for the findings; treat §A–E as historical.** This was the original proposal, for a
+> three-model *comparison* (Needle 3 against a small and a large general-purpose LLM). That
+> design was dropped in favour of a single-model capability study with three tiered
+> environments and a factorial harness-optimization design — see the
+> [README](README.md) and [the report](reports/needle3_capability_report.md).
+>
+> **§0 survives intact and is the most useful part of this file.** It records eleven properties
+> of the `cactus-needle` runtime established by reading its source and running it — the
+> process-global singleton, bit-exact determinism, the absent `escalate` field, the
+> high-confidence silent misses at large catalogues, the disagreement between raw output and
+> the vendor's own production contract. Every one of those shaped the study that was actually
+> run, and none of them are documented upstream.
 
 ---
 
