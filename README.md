@@ -4,8 +4,29 @@ Measures where Cactus Compute's **Needle 3** is sufficient for tool-calling work
 general-purpose LLM becomes necessary. Not a demo — the ladder, the scoring and the fairness
 rules are designed to find the boundary, not to argue a side.
 
-Design rationale and the runtime findings that shaped it: **[DESIGN.md](DESIGN.md)**
-Phase 1 results: **[reports/phase1_findings.md](reports/phase1_findings.md)**
+**Read the write-up first:** [Where Needle 3 Works](https://claude.ai/code/artifact/483e29e3-77ba-40f1-bc32-426df201ce02)
+— the narrative version, with the findings and what they mean for building on this model.
+
+| | |
+|---|---|
+| Full technical report | [reports/needle3_capability_report.md](reports/needle3_capability_report.md) |
+| Interactive replay console | [live](https://claude.ai/artifact/E25PPDASPhMFkbFP4MEm4h) · [source](dashboard/index.html) |
+| Design rationale and runtime findings | [DESIGN.md](DESIGN.md) |
+| First-iteration notes (historical) | [reports/phase1_findings.md](reports/phase1_findings.md) |
+
+## Headline result
+
+Needle 3, base weights, 110 tasks across three environments:
+
+| | baseline harness | optimized harness |
+|---|---|---|
+| Full-call exact match | 0.364 | **0.482** |
+| End-to-end task success | 0.582 | **0.691** |
+| Conditional pairs (both branches) | 0 / 5 | 0 / 5 |
+| Ambient-context tasks | 0.00 | **0.72** |
+
+Median 591 ms per task, 146 MB peak RAM, CPU only, fully deterministic.
+61% of the model's high-confidence answers (≥ 0.8) were wrong.
 
 ---
 
