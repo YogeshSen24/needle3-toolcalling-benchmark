@@ -1,11 +1,14 @@
-# Needle 3 Tool-Calling Crossover Benchmark
+# Needle 3 Tool-Calling Capability Benchmark
 
-Measures where Cactus Compute's **Needle 3** is sufficient for tool-calling work and where a
-general-purpose LLM becomes necessary. Not a demo — the ladder, the scoring and the fairness
-rules are designed to find the boundary, not to argue a side.
+What can Cactus Compute's **Needle 3** actually do as a tool-calling model, where does it break,
+and how much of the breakage is the harness's fault rather than the model's?
+
+This is **not a model comparison**. No second model is involved. A comparison would only show
+that an 8 MB on-device model is worse than a frontier LLM at hard things, which everyone already
+assumes. The goal here is the shape of the boundary.
 
 **Read the write-up first:** [Where Needle 3 Works](https://claude.ai/code/artifact/483e29e3-77ba-40f1-bc32-426df201ce02)
-— the narrative version, with the findings and what they mean for building on this model.
+— the narrative version, with what the findings mean for building on this model.
 
 | | |
 |---|---|
@@ -16,129 +19,140 @@ rules are designed to find the boundary, not to argue a side.
 
 ## Headline result
 
-Needle 3, base weights, 110 tasks across three environments:
+Needle 3 base weights, 110 tasks, three environments, 1,910 episodes:
 
 | | baseline harness | optimized harness |
 |---|---|---|
 | Full-call exact match | 0.364 | **0.482** |
 | End-to-end task success | 0.582 | **0.691** |
-| Conditional pairs (both branches) | 0 / 5 | 0 / 5 |
 | Ambient-context tasks | 0.00 | **0.72** |
+| Conditional pairs (both branches) | 0 / 5 | 0 / 5 |
 
 Median 591 ms per task, 146 MB peak RAM, CPU only, fully deterministic.
-61% of the model's high-confidence answers (≥ 0.8) were wrong.
+**61% of the model's high-confidence answers (≥ 0.8) were wrong.**
+
+Stacking *every* optimization scored **−1.8 points**. Stacking only the ones that measured
+positive scored **+11.8**. That difference is the point of the study.
 
 ---
 
-## Install
+## Install and run
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
 Python 3.11+ (developed on 3.12). The Needle engine and weights download once from Hugging Face
-on first use and cache in `~/.cache/cactus-needle/v3/`.
-
-## Run it
-
-Needle-only needs no API key and works immediately:
+on first use and cache in `~/.cache/cactus-needle/v3/`. No API key is needed for anything here.
 
 ```bash
-python -m benchmark.runner --models needle3
+python -m benchmark.runner --experiment all          # everything (~75 min)
+python -m benchmark.runner --experiment baseline     # raw Needle, all 3 environments (~2 min)
+python -m benchmark.runner --experiment profiles     # the 10 harness configurations
+python -m benchmark.runner --experiment toolcount    # catalogue-size sweep
 ```
 
-The full configured experiment:
+Narrow it while iterating:
 
 ```bash
-python -m benchmark.runner --config config/experiment.yaml
+python -m benchmark.runner --experiment baseline --environments smart_home --levels 0 1
+python -m benchmark.runner --experiment profiles --profiles baseline optimized_selected
 ```
 
-A subset of the complexity ladder:
+Ablations and the viewer:
 
 ```bash
-python -m benchmark.runner --models needle3 --levels 0 1 2 3
+python -m benchmark.probes.context_rendering              # how to pass ambient context
+python -m benchmark.reports.export_viewer results dashboard/data.json
+python -m http.server -d dashboard 8000
 ```
 
-One scoring contract instead of both:
+Runs are serial by necessity: Needle's engine is a process-global singleton
+(`needle._active[generation]`), so constructing a second agent steals the binding from the
+first. Nothing can be parallelised in-process.
 
-```bash
-python -m benchmark.runner --models needle3 --contract raw
-```
+## The three environments
 
-## Adding the LLM arms
+Tiered by properties you can count, not by a label:
 
-Set a key — `.env` is the easiest, since a `$env:` variable set in one shell does not reach
-another process:
+| tier | environment | tools | tools sharing a leading verb | max args | destructive tools |
+|---|---|---|---|---|---|
+| T1 | `smart_home` | 10 | 3 | 2 | 0 |
+| T2 | `workspace` (calendar + files) | 12 | 3 | 4 | 2 |
+| T3 | `business_ops` (CRM, billing, mail) | 20 | **11** | 3 | 3 |
 
-```bash
-cp .env.example .env
-```
+T3 has six tools starting `search_` and five starting `send_`, so the verb carries almost no
+routing signal and the object has to. Each environment is a deterministic simulator — no
+network, no randomness, no clock reads.
 
-Put the key after `GEMINI_API_KEY=`, then list the models that actually exist rather than
-guessing an ID:
+Six difficulty levels per environment: direct → paraphrase → distraction → ambient context →
+parallel → dependent/conditional.
 
-```bash
-python -m benchmark.runner --list-models
-```
+## The optimization levers
 
-Put two of those IDs into `SMALL_MODEL` and `LARGE_MODEL` in `.env`, flip `enabled: true` for
-`small_llm` and `large_llm` in `config/models.yaml`, and run all three arms:
+Each is one field on a `Profile` ([benchmark/profiles.py](benchmark/profiles.py)), run as a
+single-factor arm against the identical baseline so every claim has an isolated effect size with
+a paired bootstrap CI.
 
-```bash
-python -m benchmark.runner --models needle3 small_llm large_llm
-```
+| lever | what it changes | measured effect |
+|---|---|---|
+| `opt_context_inline` | ambient facts into the user turn | **+11.8 pts** |
+| `opt_constraints` | enums, bounds, regex patterns in schemas | **+6.4 pts** |
+| `opt_descriptions` | vendor house-style tool descriptions | +2.7 (n.s.) |
+| `opt_loop_breaker` | stop when a call repeats | +0.9 (n.s.) |
+| `opt_normalize` | deterministic prompt normalization | 0.0 |
+| `opt_action_enum` | one tool per device class | −0.9 (n.s.) |
+| `opt_triggers` | regex triggers that force a call | −0.9 (n.s.) |
+| `opt_prefilter5` | explicit top-5 embedding prefilter | **−10.0 pts** |
 
-## What comes out
+## Methodology notes
 
-| file | contents |
-|---|---|
-| `results/raw_results.jsonl` | every turn, every envelope, verbatim |
-| `results/summary.csv` | one row per case × model × contract × granularity |
-| `results/by_complexity.csv` | accuracy per level with bootstrap CIs |
-| `results/overall.csv` | headline rates, latency percentiles |
-| `results/conditional_pairs.csv` | L6 pair success (both branches must be right) |
-| `results/needle_confidence.csv` | calibration buckets |
-| `results/high_confidence_failures.csv` | confidence ≥ 0.8 and wrong |
-| `results/failures.jsonl` | every failure with expected, actual and state diff |
-| `results/contamination.json` | overlap scores against the vendor's shipped suites |
-| `results/environment.json` | hardware, versions, full config |
-| `results/fig_*.png` | complexity curve, calibration, accuracy vs latency |
-
-## How fairness is enforced
-
-* **One shared agentic loop** for every model (`harness/loop.py`). Using each vendor's own agent
-  runner would confound loop policy with model capability.
-* **One canonical context** (`harness/context.py`), rendered per adapter from the same fact set,
-  so the LLM cannot quietly receive a better prompt.
+* **Deterministic scoring.** No LLM judge. End-to-end success compares the *complete* final
+  world state, so an extra unwanted action fails a task even when the required one happened.
+* **Contamination gate.** Every task is scored against all 192 prompts in the six shipped
+  `needle.environments` suites; the run aborts on a match. It caught one on the first run —
+  `"Open the blinds."` is verbatim a shipped case, where the vendor labels it a *refusal*.
 * **Two scoring contracts.** `raw` scores the model's output; `production` applies the vendor's
-  own gates (`validation.ungrounded`, `validation.negation`, confidence threshold). They disagree
-  on real cases, so both are always reported.
-* **Contamination gate.** Every prompt is scored against all 192 prompts in the six shipped
-  `needle.environments` suites. The run aborts on a match. It caught one on the first run.
-* **No Needle-only tuning.** Base weights, no fine-tuning, and `@needle.tool(triggers=...)`
-  regexes are excluded from the base comparison because they bypass the confidence threshold.
-* **Abstention is scored by action, not prose.** An empty call list, a refusal and a clarifying
-  question all count the same, so Needle is not penalised for having no prose and the LLMs are
-  not penalised for having some.
+  own gates (`validation.ungrounded`, `validation.negation`, confidence threshold). They
+  disagree on real cases, so both are always reported.
+* **Paired conditionals.** Every "if X then Y" task runs twice with different world state.
+  Credit requires both branches. Testing only the positive branch would have scored a model
+  that never checks the condition as competent.
+* **Ground truth by construction.** Expected end states are produced by executing the gold calls
+  against the simulator, so they cannot drift from the world model.
 
 ## Layout
 
 ```
 benchmark/
-  adapters/   base.py needle3.py gemini.py registry.py
-  harness/    loop.py simulator.py context.py toolset.py
-  tools/      smart_home.py            # two granularities, one world state
-  dataset/    schema.py phase1.py contamination.py
-  evaluator/  contracts.py scoring.py taxonomy.py stats.py
-  runner/     __main__.py
-  reports/    plots.py
-  probes/     context_rendering.py     # runtime ablations
-config/       experiment.yaml models.yaml
-results/
+  adapters/      base.py needle3.py gemini.py registry.py
+  environments/  smart_home.py workspace.py business_ops.py
+  harness/       loop.py simulator.py context.py toolset.py embedding.py normalize.py
+  dataset/       schema.py cases_*.py contamination.py
+  evaluator/     contracts.py scoring.py taxonomy.py stats.py
+  probes/        context_rendering.py
+  runner/        __main__.py
+  profiles.py
+config/          experiment.yaml models.yaml
+dashboard/       index.html          # three.js replay console
+results/         raw evidence, committed
 ```
 
-## Status
+`adapters/gemini.py` is unused by this study — it survives from an earlier comparison design and
+is kept because it is the working reference for adding a second model arm.
 
-Phase 1 (mechanics, Needle-only, L0–L6, 40 cases) is complete and hand-verified.
-Phases 2–6 — full 350–500 case dataset, tool-count and similarity experiments, language
-variation, hybrid routing, holdout — are specified in [DESIGN.md](DESIGN.md) §D and not yet built.
+## Raw evidence
+
+Committed, not just described: `results/raw_results.jsonl` (every episode, every response
+envelope, unfiltered), `results/failures.jsonl` (expected vs actual plus state diff for each
+miss), `results/summary.csv`, `results/by_tool_count.csv`, `results/contamination.json`,
+`results/environment.json` (hardware, versions, config).
+
+## Limitations
+
+110 tasks is small; per-level cells are six tasks each and should be read as direction, not
+magnitude. One author wrote the tasks. There is no held-out split — the winning configuration
+was selected on the same data it is reported on, so treat +11.8 as an upper bound. One machine,
+CPU only. Single model version, four days after release.
+
+Full list in [the report](reports/needle3_capability_report.md#5-limitations).
