@@ -1,0 +1,34 @@
+# Phase 1 experiment configuration.
+# Everything that could change a number lives here, and the whole file is
+# copied into results/environment.json so a run can be reconstructed.
+
+name: phase1_mechanics
+dataset: phase1          # phase1 | jsonl path
+splits: [dev]
+levels: [0, 1, 2, 3, 4, 5, 6]
+
+granularities: [verb_split, action_enum]
+
+# Deterministic models need one run; stochastic ones need several.
+# Needle 3 was measured as bit-exact across 5 runs (DESIGN.md F2), so 1 is
+# sufficient and is re-verified by the determinism check below.
+repeats:
+  needle3: 1
+  default: 3
+
+determinism_check:
+  enabled: true
+  case_sample: 5
+  runs: 3
+
+max_steps: 4
+contracts: [raw, production]
+production_confidence_threshold: 0.4
+
+toolset:
+  size: null             # null = domain tools only
+  similarity: low
+  gold_position: null
+  seed: 20260920
+
+output_dir: results

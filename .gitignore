@@ -1,0 +1,23 @@
+# Secrets — never commit
+.env
+.env.local
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Agent tooling
+.claude/
+
+# Intermediate run directories duplicate the merged results/ files.
+results/main/
+results/patch/
+results/patch.log
+
+# Needle engine/weights cache is global (~/.cache/cactus-needle), not local,
+# but tool indexes written next to the project are ignored:
+*.idx

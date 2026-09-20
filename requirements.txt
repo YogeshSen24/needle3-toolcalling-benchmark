@@ -1,0 +1,6 @@
+cactus-needle==3.0.2
+pydantic>=2.7
+pandas>=2.2
+numpy>=1.26
+matplotlib>=3.8
+PyYAML>=6.0

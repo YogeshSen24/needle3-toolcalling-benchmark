@@ -1,0 +1,28 @@
+# Model arms. Model IDs are never hard-coded in Python.
+#
+# The two Gemini arms stay disabled until their model IDs are filled in from a
+# live `python -m benchmark.runner --list-models` call, so the reproducibility
+# record never contains a guessed or stale ID.
+
+models:
+  - name: needle3
+    adapter: needle3
+    enabled: true
+    max_new_tokens: 512
+    notes: "Base Needle 3, no fine-tuning, no trigger regexes (DESIGN.md §A.3)."
+
+  - name: small_llm
+    adapter: gemini
+    enabled: false
+    model: null            # e.g. from --list-models
+    model_env: SMALL_MODEL
+    temperature: 0.0
+    max_tokens: 1024
+
+  - name: large_llm
+    adapter: gemini
+    enabled: false
+    model: null
+    model_env: LARGE_MODEL
+    temperature: 0.0
+    max_tokens: 1024

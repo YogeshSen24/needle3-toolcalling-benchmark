@@ -1,0 +1,71 @@
+{
+  "timestamp": "2026-09-20T13:03:01+0530",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+  "python": "3.12.10",
+  "cactus_needle_version": "3.0.2",
+  "needle_generation": 3,
+  "weights": "base (no fine-tuning)",
+  "git_commit": null,
+  "experiment": "all",
+  "n_cases": 110,
+  "profiles": [
+    "baseline",
+    "opt_descriptions",
+    "opt_constraints",
+    "opt_context_inline",
+    "opt_normalize",
+    "opt_triggers",
+    "opt_loop_breaker",
+    "opt_prefilter5",
+    "opt_action_enum",
+    "optimized_all"
+  ],
+  "tiers": [
+    {
+      "environment": "smart_home",
+      "tier": 1,
+      "n_tools": 10,
+      "tools_sharing_a_verb": 3,
+      "mean_description_similarity": 0.4105,
+      "mean_args_per_tool": 1.4,
+      "max_args_per_tool": 2,
+      "embedding_overlap_baseline": -0.1096
+    },
+    {
+      "environment": "workspace",
+      "tier": 2,
+      "n_tools": 12,
+      "tools_sharing_a_verb": 3,
+      "mean_description_similarity": 0.1503,
+      "mean_args_per_tool": 1.75,
+      "max_args_per_tool": 4,
+      "embedding_overlap_baseline": -0.0895
+    },
+    {
+      "environment": "business_ops",
+      "tier": 3,
+      "n_tools": 20,
+      "tools_sharing_a_verb": 11,
+      "mean_description_similarity": 0.1132,
+      "mean_args_per_tool": 1.7,
+      "max_args_per_tool": 3,
+      "embedding_overlap_baseline": -0.0519
+    }
+  ],
+  "wall_clock_seconds": 4432.5,
+  "adapter": {
+    "name": "needle3",
+    "package": "cactus-needle",
+    "version": "3.0.2",
+    "generation": 3,
+    "weights": "base",
+    "max_new_tokens": 512,
+    "mean_init_seconds": 3.059707631297758,
+    "concurrency_safe": false
+  },
+  "contracts": [
+    "raw",
+    "production@0.4"
+  ]
+}

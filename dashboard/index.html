@@ -1,0 +1,556 @@
+<meta charset="utf-8">
+<title>Needle Bench Console</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  :root{
+    --ground:#f2f4f6; --surface:#ffffff; --surface-2:#e9edf1; --sunken:#dfe4ea;
+    --line:#d3dae1; --line-strong:#b6c0cb;
+    --ink:#131a20; --ink-2:#4a5761; --ink-3:#77848e;
+    --accent:#0d7490; --accent-soft:#d3ebf1;
+    --pass:#2c7350; --pass-soft:#d6ebdf;
+    --fail:#a8322b; --fail-soft:#f6dcda;
+    --warn:#8a6100; --warn-soft:#f6e9c8;
+    --shadow:0 1px 2px rgba(19,26,32,.07), 0 6px 16px -10px rgba(19,26,32,.22);
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#10141a; --surface:#171d25; --surface-2:#1e262f; --sunken:#0c1015;
+      --line:#2a333e; --line-strong:#3c4856;
+      --ink:#e7edf2; --ink-2:#a3b0bc; --ink-3:#74828f;
+      --accent:#3fb3cf; --accent-soft:#12303a;
+      --pass:#5fc28d; --pass-soft:#14301f;
+      --fail:#f0776c; --fail-soft:#361713;
+      --warn:#e0b45c; --warn-soft:#332813;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 20px -12px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#10141a; --surface:#171d25; --surface-2:#1e262f; --sunken:#0c1015;
+    --line:#2a333e; --line-strong:#3c4856;
+    --ink:#e7edf2; --ink-2:#a3b0bc; --ink-3:#74828f;
+    --accent:#3fb3cf; --accent-soft:#12303a;
+    --pass:#5fc28d; --pass-soft:#14301f;
+    --fail:#f0776c; --fail-soft:#361713;
+    --warn:#e0b45c; --warn-soft:#332813;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 20px -12px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{margin:0; text-wrap:balance; font-weight:600; letter-spacing:-.011em}
+  .eyebrow{
+    font-family:var(--mono); font-size:10px; font-weight:500;
+    letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3);
+  }
+  code,.mono{font-family:var(--mono)}
+
+  .shell{display:flex; flex-direction:column; height:100%; min-height:0}
+
+  header.top{
+    display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;
+    padding:14px 20px; padding-top:calc(14px + env(safe-area-inset-top,0px));
+    background:var(--surface); border-bottom:1px solid var(--line);
+  }
+  header.top h1{font-size:16px}
+  header.top .sub{color:var(--ink-2); font-size:12.5px}
+  .spacer{flex:1 1 auto}
+
+  .controls{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    padding:10px 20px; background:var(--surface-2);
+    border-bottom:1px solid var(--line);
+  }
+  select,button{
+    font:inherit; font-size:12.5px; color:var(--ink);
+    background:var(--surface); border:1px solid var(--line-strong);
+    border-radius:5px; padding:5px 9px; cursor:pointer;
+  }
+  button:hover,select:hover{border-color:var(--accent)}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+  .seg{display:inline-flex; border:1px solid var(--line-strong); border-radius:5px; overflow:hidden}
+  .seg button{border:0; border-radius:0; background:var(--surface)}
+  .seg button+button{border-left:1px solid var(--line-strong)}
+  .seg button[aria-pressed="true"]{background:var(--accent); color:#fff}
+
+  main{
+    flex:1 1 auto; min-height:0; display:grid;
+    grid-template-columns:288px minmax(0,1fr) minmax(0,400px);
+  }
+  .pane{min-height:0; overflow:auto; border-right:1px solid var(--line)}
+  .pane:last-child{border-right:0}
+  .pane-head{
+    position:sticky; top:0; z-index:2; background:var(--surface);
+    border-bottom:1px solid var(--line); padding:9px 14px;
+    display:flex; align-items:center; gap:8px;
+  }
+
+  /* ---- case list: status is encoded in a stripe, not only colour ---- */
+  ul.cases{list-style:none; margin:0; padding:0}
+  ul.cases li{border-bottom:1px solid var(--line)}
+  .case-btn{
+    width:100%; text-align:left; border:0; border-radius:0; background:transparent;
+    padding:9px 14px 9px 11px; display:grid; gap:3px;
+    border-left:3px solid transparent;
+  }
+  .case-btn:hover{background:var(--surface-2)}
+  .case-btn[aria-current="true"]{background:var(--accent-soft); border-left-color:var(--accent)}
+  .case-btn .id{font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+  .case-btn .pr{font-size:12.5px; color:var(--ink); line-height:1.35}
+  .marks{display:flex; gap:4px; margin-top:2px}
+  .mark{
+    font-family:var(--mono); font-size:9.5px; font-weight:600; letter-spacing:.04em;
+    padding:1px 5px; border-radius:3px; border:1px solid transparent;
+  }
+  .mark.pass{background:var(--pass-soft); color:var(--pass); border-color:var(--pass)}
+  .mark.fail{background:var(--fail-soft); color:var(--fail); border-color:var(--fail)}
+  .mark.none{background:var(--sunken); color:var(--ink-3); border-color:var(--line)}
+
+  /* ---- world pane ---- */
+  #stage{width:100%; aspect-ratio:4/3; max-width:100%; display:block; background:var(--sunken)}
+  .legend{
+    display:flex; gap:14px; flex-wrap:wrap; padding:10px 16px;
+    font-size:11.5px; color:var(--ink-2); border-top:1px solid var(--line);
+  }
+  .legend b{font-weight:600; color:var(--ink)}
+  .panel{padding:14px 16px; display:grid; gap:12px}
+  table.grid{width:100%; border-collapse:collapse; font-size:12px}
+  table.grid th,table.grid td{
+    text-align:left; padding:5px 8px; border-bottom:1px solid var(--line);
+    font-variant-numeric:tabular-nums;
+  }
+  table.grid th{font-size:10px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3)}
+  table.grid td.m{font-family:var(--mono); font-size:11.5px}
+  tr.changed td{background:var(--warn-soft)}
+  .tablewrap{overflow-x:auto}
+
+  /* ---- trace pane ---- */
+  .block{padding:13px 16px; border-bottom:1px solid var(--line); display:grid; gap:7px}
+  .said{
+    font-family:var(--mono); font-size:12px; background:var(--sunken);
+    border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:0 5px 5px 0; padding:9px 11px; white-space:pre-wrap; word-break:break-word;
+  }
+  .call{
+    font-family:var(--mono); font-size:11.5px; padding:7px 10px; border-radius:5px;
+    border:1px solid var(--line); background:var(--surface-2);
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .call.ok{border-left:3px solid var(--pass)}
+  .call.bad{border-left:3px solid var(--fail)}
+  .call.want{border-left:3px solid var(--ink-3); background:var(--surface)}
+  .kv{display:flex; gap:8px; flex-wrap:wrap; font-size:11.5px; color:var(--ink-2)}
+  .chip{
+    font-family:var(--mono); font-size:10.5px; padding:2px 7px; border-radius:99px;
+    background:var(--surface-2); border:1px solid var(--line);
+  }
+  .chip.warnc{background:var(--warn-soft); color:var(--warn); border-color:var(--warn)}
+  .chip.failc{background:var(--fail-soft); color:var(--fail); border-color:var(--fail)}
+  .meter{height:4px; background:var(--sunken); border-radius:99px; overflow:hidden; min-width:70px; flex:1}
+  .meter i{display:block; height:100%; background:var(--accent)}
+  .muted{color:var(--ink-3); font-size:12px}
+  .reason{font-size:12px; color:var(--ink-2); font-style:italic}
+
+  @media (max-width:1040px){
+    main{grid-template-columns:1fr; grid-template-rows:auto}
+    .pane{border-right:0; border-bottom:1px solid var(--line); max-height:none; overflow:visible}
+    body{overflow:auto}
+    html,body{height:auto}
+    .shell{height:auto}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<div class="shell">
+  <header class="top">
+    <h1>Needle&nbsp;Bench Console</h1>
+    <span class="sub">Cactus&nbsp;Needle&nbsp;3 &middot; base weights &middot; deterministic replay</span>
+    <span class="spacer"></span>
+    <span class="eyebrow" id="stamp">loading</span>
+  </header>
+
+  <div class="controls">
+    <label class="eyebrow" for="envsel">Environment</label>
+    <select id="envsel"></select>
+    <label class="eyebrow" for="lvlsel">Difficulty</label>
+    <select id="lvlsel"></select>
+    <label class="eyebrow" for="outsel">Show</label>
+    <select id="outsel">
+      <option value="all">all cases</option>
+      <option value="fail">failures only</option>
+      <option value="fixed">fixed by optimization</option>
+    </select>
+    <span class="spacer"></span>
+    <span class="eyebrow">Harness</span>
+    <span class="seg" id="profseg"></span>
+  </div>
+
+  <main>
+    <section class="pane" aria-label="Cases">
+      <div class="pane-head"><span class="eyebrow">Cases</span><span class="spacer"></span>
+        <span class="eyebrow" id="ncases"></span></div>
+      <ul class="cases" id="caselist"></ul>
+    </section>
+
+    <section class="pane" aria-label="World state">
+      <div class="pane-head"><span class="eyebrow">World after the run</span>
+        <span class="spacer"></span><span class="eyebrow" id="worldnote"></span></div>
+      <canvas id="stage" hidden></canvas>
+      <div class="legend" id="legend" hidden></div>
+      <div class="panel" id="panel"></div>
+    </section>
+
+    <section class="pane" aria-label="Call trace">
+      <div class="pane-head"><span class="eyebrow">Call trace</span></div>
+      <div id="trace"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var DATA=null, cur=null, profile="baseline";
+  var $=function(s){return document.querySelector(s)};
+
+  fetch("data.json").then(function(r){return r.json()}).then(function(d){
+    DATA=d; boot();
+  }).catch(function(){
+    $("#panel").innerHTML='<p class="muted">Could not load <code>data.json</code>. '+
+      'Generate it with <code class="mono">python -m benchmark.reports.export_viewer</code>, '+
+      'then serve this folder over http.</p>';
+    $("#stamp").textContent="no data";
+  });
+
+  function boot(){
+    var envs=Object.keys(DATA.environments);
+    $("#envsel").innerHTML=envs.map(function(e){
+      var t=DATA.environments[e];
+      return '<option value="'+e+'">T'+t.tier+' · '+e+' ('+t.n_tools+' tools)</option>';
+    }).join("");
+    $("#lvlsel").innerHTML='<option value="">all levels</option>'+
+      [0,1,2,3,4,5].map(function(l){
+        var n=(DATA.cases.filter(function(c){return c.level===l})[0]||{}).level_name||"";
+        return '<option value="'+l+'">D'+l+' · '+n+'</option>';
+      }).join("");
+    $("#profseg").innerHTML=DATA.profiles.map(function(p){
+      return '<button type="button" data-p="'+p+'" aria-pressed="'+(p===profile)+'">'+
+        (p==="baseline"?"baseline":"optimized")+'</button>';
+    }).join("");
+    $("#profseg").addEventListener("click",function(e){
+      var b=e.target.closest("button"); if(!b) return;
+      profile=b.dataset.p;
+      Array.prototype.forEach.call(this.querySelectorAll("button"),function(x){
+        x.setAttribute("aria-pressed", String(x.dataset.p===profile));
+      });
+      renderList(); if(cur) select(cur.id);
+    });
+    ["#envsel","#lvlsel","#outsel"].forEach(function(s){
+      $(s).addEventListener("change",renderList);
+    });
+    var m=DATA.meta||{};
+    $("#stamp").textContent=(m.cactus_needle_version?("cactus-needle "+m.cactus_needle_version+" · "):"")+
+      (DATA.cases.length+" cases");
+    initThree();
+    renderList();
+  }
+
+  function visible(){
+    var env=$("#envsel").value, lvl=$("#lvlsel").value, mode=$("#outsel").value;
+    return DATA.cases.filter(function(c){
+      if(c.environment!==env) return false;
+      if(lvl!=="" && c.level!==+lvl) return false;
+      var s=c.scores||{};
+      if(mode==="fail")  return s[profile] && !s[profile].full_call_exact;
+      if(mode==="fixed") return s.baseline && s.optimized_all &&
+                                !s.baseline.full_call_exact && s.optimized_all.full_call_exact;
+      return true;
+    });
+  }
+
+  function renderList(){
+    var list=visible();
+    $("#ncases").textContent=list.length+" shown";
+    $("#caselist").innerHTML=list.map(function(c){
+      var marks=DATA.profiles.map(function(p){
+        var s=(c.scores||{})[p];
+        var cls=!s?"none":(s.full_call_exact?"pass":"fail");
+        var txt=(p==="baseline"?"base":"opt")+" "+(!s?"–":(s.full_call_exact?"✓":"✗"));
+        return '<span class="mark '+cls+'">'+txt+'</span>';
+      }).join("");
+      return '<li><button class="case-btn" type="button" data-id="'+c.id+'" '+
+        'aria-current="'+(cur&&cur.id===c.id)+'">'+
+        '<span class="id">'+c.id+'</span>'+
+        '<span class="pr">'+esc(c.prompt)+'</span>'+
+        '<span class="marks">'+marks+'</span></button></li>';
+    }).join("") || '<li><div class="panel"><p class="muted">No cases match this filter.</p></div></li>';
+    Array.prototype.forEach.call(document.querySelectorAll(".case-btn"),function(b){
+      b.addEventListener("click",function(){select(b.dataset.id)});
+    });
+    if(list.length && (!cur || list.indexOf(cur)===-1)) select(list[0].id);
+  }
+
+  function select(id){
+    cur=DATA.cases.filter(function(c){return c.id===id})[0];
+    Array.prototype.forEach.call(document.querySelectorAll(".case-btn"),function(b){
+      b.setAttribute("aria-current", String(b.dataset.id===id));
+    });
+    renderWorld(); renderTrace();
+  }
+
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+  function fmtCall(c){
+    var a=c.arguments||{};
+    var parts=Object.keys(a).sort().map(function(k){return k+"="+JSON.stringify(a[k])});
+    return c.name+"("+parts.join(", ")+")";
+  }
+  function run(){ return cur && cur.runs ? cur.runs[profile] : null }
+  function score(){ return cur && cur.scores ? cur.scores[profile] : null }
+
+  /* ---------------- trace ---------------- */
+  function renderTrace(){
+    if(!cur){ $("#trace").innerHTML=""; return }
+    var r=run(), s=score()||{};
+    var want=(cur.expected.calls||[]);
+    var got=(r&&r.calls)||[];
+    var wantKeys=want.map(fmtCall);
+    var blocks=[];
+
+    blocks.push('<div class="block"><span class="eyebrow">Sent to the model</span>'+
+      '<div class="said">'+esc(r?r.sent_text:cur.prompt)+'</div>'+
+      '<div class="kv"><span class="chip">system: '+esc(r?r.system:"")+'</span>'+
+      '<span class="chip">'+(r?r.n_tools:"?")+' tools offered</span></div></div>');
+
+    blocks.push('<div class="block"><span class="eyebrow">Expected</span>'+
+      (want.length? want.map(function(c){return '<div class="call want">'+esc(fmtCall(c))+'</div>'}).join("")
+                  : '<p class="muted">no call — the correct behaviour is to do nothing</p>')+
+      '</div>');
+
+    blocks.push('<div class="block"><span class="eyebrow">Needle produced</span>'+
+      (got.length? got.map(function(c){
+            var ok=wantKeys.indexOf(fmtCall(c))>=0;
+            return '<div class="call '+(ok?"ok":"bad")+'">'+esc(fmtCall(c))+'</div>';
+          }).join("")
+        : '<p class="muted">no calls</p>')+
+      (r&&r.suppressed&&r.suppressed.length
+        ? '<div class="kv"><span class="chip warnc">suppressed: '+
+          esc(r.suppressed.map(fmtCall).join("; "))+'</span></div>' : "")+
+      '</div>');
+
+    var conf=r&&r.confidence!=null?r.confidence:null;
+    var v=(r&&r.validation)||{};
+    blocks.push('<div class="block"><span class="eyebrow">Signals</span>'+
+      '<div class="kv"><span>confidence</span>'+
+        '<span class="meter"><i style="width:'+((conf==null?0:conf)*100).toFixed(0)+'%"></i></span>'+
+        '<span class="mono">'+(conf==null?"—":conf.toFixed(3))+'</span></div>'+
+      '<div class="kv">'+
+        '<span class="chip'+(s.full_call_exact?"":" failc")+'">exact call '+(s.full_call_exact?"✓":"✗")+'</span>'+
+        '<span class="chip'+(s.e2e_success?"":" failc")+'">end state '+(s.e2e_success?"✓":"✗")+'</span>'+
+        (s.false_action?'<span class="chip failc">false action</span>':"")+
+        (v.negation?'<span class="chip warnc">validation.negation</span>':"")+
+        ((v.ungrounded&&v.ungrounded.length)?'<span class="chip warnc">ungrounded: '+
+            esc(v.ungrounded.join(", "))+'</span>':"")+
+        (r&&r.steps>1?'<span class="chip warnc">'+r.steps+' turns</span>':"")+
+      '</div>'+
+      ((s.failure_types&&s.failure_types.length)
+        ? '<div class="kv">'+s.failure_types.map(function(f){
+            return '<span class="chip failc">'+esc(f)+'</span>'}).join("")+'</div>' : "")+
+      (r&&r.reasoning?'<p class="reason">“'+esc(r.reasoning)+'”</p>':"")+
+      '</div>');
+    $("#trace").innerHTML=blocks.join("");
+  }
+
+  /* ---------------- world ---------------- */
+  var three={};
+  function initThree(){
+    var canvas=$("#stage");
+    try{
+      three.renderer=new THREE.WebGLRenderer({canvas:canvas,antialias:true,alpha:false});
+    }catch(e){ three.renderer=null; return }
+    three.scene=new THREE.Scene();
+    var d=7.2;
+    three.camera=new THREE.OrthographicCamera(-d,d,d*0.75,-d*0.75,0.1,100);
+    three.camera.position.set(9,9,9); three.camera.lookAt(0,0,0);
+    three.scene.add(new THREE.AmbientLight(0xffffff,0.42));
+    var key=new THREE.DirectionalLight(0xffffff,0.55); key.position.set(6,12,8);
+    three.scene.add(key);
+    three.group=new THREE.Group(); three.scene.add(three.group);
+    window.addEventListener("resize",sizeThree);
+  }
+  function sizeThree(){
+    if(!three.renderer) return;
+    var c=$("#stage"), w=c.clientWidth||600, h=w*0.75;
+    three.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+    three.renderer.setSize(w,h,false);
+    three.renderer.render(three.scene,three.camera);
+  }
+  function themeInk(){
+    var cs=getComputedStyle(document.documentElement);
+    return {
+      floor:new THREE.Color(cs.getPropertyValue("--surface-2").trim()||"#e9edf1"),
+      wall:new THREE.Color(cs.getPropertyValue("--line-strong").trim()||"#b6c0cb"),
+      bg:new THREE.Color(cs.getPropertyValue("--sunken").trim()||"#dfe4ea")
+    };
+  }
+  var ROOM_POS={kitchen:[-2.6,-2.6],bedroom:[2.6,-2.6],living_room:[-2.6,2.6],study:[2.6,2.6]};
+
+  function renderWorld(){
+    var env=cur.environment;
+    var st=stateOf();
+    $("#worldnote").textContent = score()
+      ? (score().e2e_success ? "matches the intended end state" : "differs from the intended end state")
+      : "";
+    if(env==="smart_home" && three.renderer){
+      $("#stage").hidden=false; $("#legend").hidden=false;
+      drawHome(st); renderHomeLegend(st);
+      $("#panel").innerHTML=diffTable(st);
+    }else{
+      $("#stage").hidden=true; $("#legend").hidden=true;
+      $("#panel").innerHTML=(env==="workspace"?workspacePanel(st):businessPanel(st))+diffTable(st);
+    }
+  }
+
+  function stateOf(){
+    var r=run();
+    return (r&&r.final_state)||{};
+  }
+  function num(st,k,dflt){ var v=st[k]; return v==null?dflt:v }
+
+  function drawHome(st){
+    var pal=themeInk();
+    three.scene.background=pal.bg;
+    while(three.group.children.length) three.group.remove(three.group.children[0]);
+    Object.keys(ROOM_POS).forEach(function(room){
+      var p=ROOM_POS[room], g=new THREE.Group();
+      g.position.set(p[0],0,p[1]);
+      var floor=new THREE.Mesh(new THREE.BoxGeometry(4.4,0.22,4.4),
+        new THREE.MeshLambertMaterial({color:pal.floor}));
+      g.add(floor);
+      [[0,-2.2],[-2.2,0]].forEach(function(o){
+        var wall=new THREE.Mesh(
+          new THREE.BoxGeometry(o[0]?0.18:4.4,1.5,o[0]?4.4:0.18),
+          new THREE.MeshLambertMaterial({color:pal.wall}));
+        wall.position.set(o[0],0.75,o[1]); g.add(wall);
+      });
+      // Lamp: emissive strength tracks brightness, colour tracks the colour arg.
+      var on=num(st,"lights."+room+".on",false)===true;
+      var bright=num(st,"lights."+room+".brightness",0)/100;
+      var col=String(num(st,"lights."+room+".color","warm white"));
+      var hex={"warm white":0xffd9a0,"cool white":0xdff0ff,"red":0xff5a4a,
+               "green":0x63d08a,"blue":0x5aa8ff}[col]||0xffd9a0;
+      var bulb=new THREE.Mesh(new THREE.SphereGeometry(0.42,20,14),
+        new THREE.MeshBasicMaterial({color:on?hex:0x5a646e}));
+      bulb.position.set(0,1.95,0); g.add(bulb);
+      if(on && bright>0){
+        var pl=new THREE.PointLight(hex,Math.max(0.15,bright)*1.5,6.5);
+        pl.position.set(0,1.7,0); g.add(pl);
+      }
+      // Blinds: slats drop when closed.
+      var closed=String(num(st,"blinds."+room,"closed"))==="closed";
+      for(var i=0;i<4;i++){
+        var slat=new THREE.Mesh(new THREE.BoxGeometry(3.4,0.14,0.1),
+          new THREE.MeshLambertMaterial({color:closed?0x9aa6b2:0xc6d0da}));
+        slat.position.set(0,closed?(1.32-i*0.3):(1.45-i*0.07),-2.14);
+        g.add(slat);
+      }
+      // Thermostat: bar height maps target 10..30 C.
+      var target=+num(st,"climate."+room+".target_c",21);
+      var h=Math.max(0.12,((target-10)/20)*1.25);
+      var bar=new THREE.Mesh(new THREE.BoxGeometry(0.26,h,0.26),
+        new THREE.MeshBasicMaterial({color:target>=24?0xd9713f:(target<=18?0x4f93d6:0x6aa88a)}));
+      bar.position.set(1.75,h/2+0.11,1.75); g.add(bar);
+      if(num(st,"music."+room+".playing",false)===true){
+        var note=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.3,0.3),
+          new THREE.MeshBasicMaterial({color:0x8a6bd4}));
+        note.position.set(-1.75,0.35,1.75); g.add(note);
+      }
+      three.group.add(g);
+    });
+    sizeThree();
+  }
+
+  function renderHomeLegend(st){
+    $("#legend").innerHTML=Object.keys(ROOM_POS).map(function(room){
+      var on=num(st,"lights."+room+".on",false)===true;
+      return '<span><b>'+room.replace("_"," ")+'</b> · '+
+        (on?num(st,"lights."+room+".brightness",0)+"% "+num(st,"lights."+room+".color",""):"off")+
+        ' · '+num(st,"climate."+room+".target_c","–")+'°C · blinds '+
+        num(st,"blinds."+room,"–")+
+        (num(st,"music."+room+".playing",false)===true?' · ♪ '+num(st,"music."+room+".playlist",""):"")+
+        '</span>';
+    }).join("");
+  }
+
+  function rows(st,pre){
+    return Object.keys(st).filter(function(k){return k.indexOf(pre)===0});
+  }
+  function workspacePanel(st){
+    var ids={}; rows(st,"events.").forEach(function(k){ids[k.split(".")[1]]=1});
+    var evs=Object.keys(ids).map(function(id){
+      return '<tr><td class="m">'+id+'</td><td>'+esc(st["events."+id+".title"])+'</td>'+
+        '<td class="m">'+esc(st["events."+id+".date"])+' '+esc(st["events."+id+".start"])+'</td>'+
+        '<td class="m">'+(st["events."+id+".cancelled"]===true?"cancelled":"active")+'</td></tr>';
+    }).join("");
+    var fids={}; rows(st,"files.").forEach(function(k){fids[k.split(".")[1]]=1});
+    var fs=Object.keys(fids).map(function(id){
+      return '<tr><td class="m">'+id+'</td><td class="m">'+esc(st["files."+id+".name"])+'</td>'+
+        '<td>'+esc(st["files."+id+".folder"])+'</td>'+
+        '<td class="m">'+(st["files."+id+".deleted"]===true?"deleted":"live")+'</td></tr>';
+    }).join("");
+    return '<div><span class="eyebrow">Calendar</span><div class="tablewrap"><table class="grid">'+
+      '<tr><th>id</th><th>title</th><th>when</th><th>state</th></tr>'+evs+'</table></div></div>'+
+      '<div><span class="eyebrow">Files</span><div class="tablewrap"><table class="grid">'+
+      '<tr><th>id</th><th>name</th><th>folder</th><th>state</th></tr>'+fs+'</table></div></div>';
+  }
+  function businessPanel(st){
+    var cids={}; rows(st,"customers.").forEach(function(k){cids[k.split(".")[1]]=1});
+    var cs=Object.keys(cids).map(function(id){
+      return '<tr><td class="m">'+id+'</td><td>'+esc(st["customers."+id+".name"])+'</td>'+
+        '<td>'+esc(st["customers."+id+".notes"]||"—")+'</td>'+
+        '<td class="m">'+(st["customers."+id+".deleted"]===true?"DELETED":"live")+'</td></tr>';
+    }).join("");
+    var oids={}; rows(st,"orders.").forEach(function(k){oids[k.split(".")[1]]=1});
+    var os=Object.keys(oids).map(function(id){
+      return '<tr><td class="m">'+id+'</td><td class="m">'+esc(st["orders."+id+".date"])+'</td>'+
+        '<td>'+esc(st["orders."+id+".status"])+'</td><td class="m">'+esc(st["orders."+id+".total"])+'</td></tr>';
+    }).join("");
+    var iids={}; rows(st,"invoices.").forEach(function(k){iids[k.split(".")[1]]=1});
+    var is=Object.keys(iids).map(function(id){
+      return '<tr><td class="m">'+id+'</td><td>'+esc(st["invoices."+id+".status"])+'</td>'+
+        '<td class="m">'+esc(st["invoices."+id+".amount"])+'</td></tr>';
+    }).join("");
+    var mail=st["sent_email"]&&st["sent_email"]!=="[]"
+      ? '<div><span class="eyebrow">Outbound mail</span><div class="call">'+esc(st["sent_email"])+'</div></div>' : "";
+    return '<div><span class="eyebrow">Customers</span><div class="tablewrap"><table class="grid">'+
+      '<tr><th>id</th><th>name</th><th>notes</th><th>state</th></tr>'+cs+'</table></div></div>'+
+      '<div><span class="eyebrow">Orders</span><div class="tablewrap"><table class="grid">'+
+      '<tr><th>id</th><th>date</th><th>status</th><th>total</th></tr>'+os+'</table></div></div>'+
+      '<div><span class="eyebrow">Invoices</span><div class="tablewrap"><table class="grid">'+
+      '<tr><th>id</th><th>status</th><th>amount</th></tr>'+is+'</table></div></div>'+mail;
+  }
+
+  function diffTable(st){
+    var want=cur.expected.final_state||{};
+    var diff=Object.keys(want).filter(function(k){
+      return JSON.stringify(st[k])!==JSON.stringify(want[k]);
+    });
+    if(!diff.length) return '<div><span class="eyebrow">State check</span>'+
+      '<p class="muted">Every asserted path matches the intended end state.</p></div>';
+    return '<div><span class="eyebrow">State check — '+diff.length+' path'+
+      (diff.length>1?"s":"")+' wrong</span><div class="tablewrap"><table class="grid">'+
+      '<tr><th>path</th><th>expected</th><th>actual</th></tr>'+
+      diff.map(function(k){
+        return '<tr class="changed"><td class="m">'+esc(k)+'</td><td class="m">'+
+          esc(JSON.stringify(want[k]))+'</td><td class="m">'+esc(JSON.stringify(st[k]))+'</td></tr>';
+      }).join("")+'</table></div></div>';
+  }
+})();
+</script>
